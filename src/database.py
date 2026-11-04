@@ -1,31 +1,39 @@
 import mysql.connector 
 from mysql.connector import errorcode
 
-try:
-    db = mysql.connector.connect(
-      host="localhost",
-      user="root",
-      password="root",
-      database="cinema_db",
-    )
-except mysql.connector.Error as err:
-  if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-    print("Something is wrong with your user name or password")
-  elif err.errno == errorcode.ER_BAD_DB_ERROR:
-    print("Database does not exist")
-  else:
-    print(err)
+def connector():
+  try:
+      db = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="root",
+        database="cinema_db",
+      )
+  except mysql.connector.Error as err:
+    if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+      print("Something is wrong with your user name or password")
+    elif err.errno == errorcode.ER_BAD_DB_ERROR:
+      print("Database does not exist")
+    else:
+      print(err)
+    return None
+  return db
 
-cursor = db.cursor()
+user_type_query = (
+  "SELECT "
+  "CASE "
+  "WHEN EXISTS (SELECT 1 FROM administrator a join users u on a.email = u.email WHERE u.email = %(e)s and password = %(p)s) THEN 'admin' "
+  "WHEN EXISTS (SELECT 1 FROM client c join users u on c.email = u.email WHERE u.email = %(e)s and password = %(p)s) THEN 'user' "
+  "ELSE NULL "
+  "END as user_type; ")
 
-query = ("SELECT M.title, S.date_time, S.movie_language, T.t_id "
-         "FROM Movies M "
-         "JOIN Schedule S ON M.m_id = S.m_id "
-         "JOIN Theaters T ON S.t_id = T.t_id "
-         "WHERE M.title LIKE '%Inception%' "
-         "ORDER BY S.date_time ASC;")
-
-cursor.execute(query)
-
-for (title) in cursor:
-  print(title)
+def login(cursor):
+  user_type = None
+  while user_type == None:
+    email = input("Enter your email: ")
+    pw = input("Enter your password: ")
+    cursor.execute(user_type_query, {"e": email, "p": pw})
+    user_type = cursor.fetchone()[0]
+    if user_type == None:
+      print("Wrong email or password, try again.")
+  return(user_type)
