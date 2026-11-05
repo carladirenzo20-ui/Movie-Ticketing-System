@@ -27,7 +27,8 @@ user_type_query = (
   "ELSE NULL "
   "END as user_type; ")
 
-def login(cursor):
+def login(db):
+  cursor = db.cursor()
   user_type = None
   while user_type == None:
     email = input("Enter your email: ")
@@ -36,4 +37,4 @@ def login(cursor):
     user_type = cursor.fetchone()[0]
     if user_type == None:
       print("Wrong email or password, try again.")
-  return(user_type)
+  return(email, user_type)
