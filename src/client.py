@@ -47,6 +47,13 @@ def client_menu(client):
             break
 
 
+
+
+
+
+
+
+
 prev_purch_query = (
     "SELECT U.name, M.title, P.ticket_sold, P.tot_amount, S.date_time "
     "FROM Users U "
@@ -64,3 +71,10 @@ view_pay_met_query = (
 )
 del_pay_met_query = ()
 add_pay_met_query = ()
+def src_mov_screens_query(mov_tit: str = None, genre: str = None, language: str = None, date, time):
+    #DA INSERIRE TICKET PRICE E CAPIRE AVAILABLE SEATS COME FARLO DECRESCERE
+    query = (
+        "SELECT m.title, s.t_id, s.date_time, s.movie_language, t.max_capacity, t.is_3D, t.premium_sound "
+        "FROM movies m, schedule s, theaters t "
+        "WHERE m.m_id = s.m_id AND s.t_id = t.t_id "
+    )   
