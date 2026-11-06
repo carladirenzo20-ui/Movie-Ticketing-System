@@ -1,23 +1,50 @@
-function = str(input("Select one of the following functions:\n1. Search movie screenings\n2. Buy tickets\n3. View previous purchases\n4. Manage payment methods\n5. Exit\n"))
-
 class Client:
     def __init__(self, email, connector):
         self.email = email
         self.connector = connector
+
     def src_mov_screens(self):
         pass
+
     def prev_purch(self):
         cursor = self.connector.cursor()
         try:
-            cursor.execute(prev_purch_query, self.email)
+            cursor.execute(prev_purch_query, {"e": self.email})
+            return cursor.fetchone()
         except:
-            
+            print("Unexpected error in the query")
+
+    def pay_met(self):
+        cursor = self.connector.cursor()
+        function_pay = int(input("Select one of the following functions:\n1. View registered payment methods \n2. Delete registered payment methods \n3. Add new payment method \n4. Go back to menu"))
+
+        if function_pay == 1:
+            cursor.execute(view_pay_met_query, {"e": self.email})
+            print(cursor.fetchone())
 
 
 
 
 
 
+
+
+
+
+
+def client_menu(client):
+    while True:
+        function_menu = int(input("Select one of the following functions:\n1. Search movie screenings\n2. Buy tickets\n3. View previous purchases\n4. Manage payment methods\n5. Exit\n"))
+        if function_menu == 1:
+            pass
+        if function_menu == 2:
+            pass
+        if function_menu == 3:
+            print(client.prev_purch())
+        if function_menu == 4:
+            client.pay_met()
+        if function_menu == 5:
+            break
 
 
 prev_purch_query = (
@@ -29,3 +56,11 @@ prev_purch_query = (
     "WHERE U.email = %(e)s "
     "ORDER BY S.date_time DESC; "
 )
+
+view_pay_met_query = (
+    "SELECT card_number, billing_address, expiring_date "
+    "FROM  payment_method "
+    "WHERE client_registration = %(e)s;"
+)
+del_pay_met_query = ()
+add_pay_met_query = ()
