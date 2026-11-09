@@ -19,22 +19,27 @@ def connector():
     return None
   return db
 
-user_type_query = (
-  "SELECT "
-  "CASE "
-  "WHEN EXISTS (SELECT 1 FROM administrator a join users u on a.email = u.email WHERE u.email = %(e)s and password = %(p)s) THEN 'admin' "
-  "WHEN EXISTS (SELECT 1 FROM client c join users u on c.email = u.email WHERE u.email = %(e)s and password = %(p)s) THEN 'user' "
-  "ELSE NULL "
-  "END as user_type; ")
+user_id_mail_query = (
+  "SELECT u.user_id, "
+  "  CASE WHEN a.user_id IS NOT NULL THEN 'admin' "
+  "       WHEN c.user_id IS NOT NULL THEN 'user' "
+  "  END AS user_type "
+  "FROM Users u "
+  "LEFT JOIN Administrator a ON a.user_id = u.user_id "
+  "LEFT JOIN Client c ON c.user_id = u.user_id "
+  "WHERE u.email = %(e)s AND u.password = %(p)s"
+)
 
 def login(db):
+  print("running new login")
   cursor = db.cursor()
-  user_type = None
-  while user_type == None:
+  while True:
     email = input("Enter your email: ")
     pw = input("Enter your password: ")
-    cursor.execute(user_type_query, {"e": email, "p": pw})
-    user_type = cursor.fetchone()[0]
-    if user_type == None:
+    cursor.execute(user_id_mail_query, {"e": email, "p": pw})
+    row = cursor.fetchone()
+    if row is None or row[1] is None:
       print("Wrong email or password, try again.")
-  return(email, user_type)
+    else:
+      user_id, user_type = row
+      return(email, user_id, user_type)
