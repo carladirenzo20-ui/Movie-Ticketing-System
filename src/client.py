@@ -1,15 +1,21 @@
 class Client:
-    def __init__(self, email, connector):
-        self.email = email
+    def __init__(self, id, connector):
+        self.id = id
         self.connector = connector
 
     def src_mov_screens(self):
-        pass
+        cursor = self.connector.cursor()
+        print("Search based on preferences. If you want to leave a preference blank, press 'start\n")
+        title = input("Enter the movie title'\n")
+        genre = input("Enter the movie genre\n")
+        languange = input("Enter the movie language\n")
+        date = input("Enter the screening date. Valid format: 'YYYY-MM-DD'\n")
+        time = input("Enter the screening time. Valid format. 'hh:mm'\n")
 
     def prev_purch(self):
         cursor = self.connector.cursor()
         try:
-            cursor.execute(prev_purch_query, {"e": self.email})
+            cursor.execute(prev_purch_query, {"e": self.id})
             return cursor.fetchone()
         except:
             print("Unexpected error in the query")
@@ -19,7 +25,7 @@ class Client:
         function_pay = int(input("Select one of the following functions:\n1. View registered payment methods \n2. Delete registered payment methods \n3. Add new payment method \n4. Go back to menu"))
 
         if function_pay == 1:
-            cursor.execute(view_pay_met_query, {"e": self.email})
+            cursor.execute(view_pay_met_query, {"e": self.id})
             print(cursor.fetchone())
 
 
@@ -71,10 +77,14 @@ view_pay_met_query = (
 )
 del_pay_met_query = ()
 add_pay_met_query = ()
-def src_mov_screens_query(mov_tit: str = None, genre: str = None, language: str = None, date, time):
+def src_mov_screens_query(mov_tit, genre, language: str = None, date, time):
     #DA INSERIRE TICKET PRICE E CAPIRE AVAILABLE SEATS COME FARLO DECRESCERE
     query = (
-        "SELECT m.title, s.t_id, s.date_time, s.movie_language, t.max_capacity, t.is_3D, t.premium_sound "
-        "FROM movies m, schedule s, theaters t "
-        "WHERE m.m_id = s.m_id AND s.t_id = t.t_id "
+        "SELECT m.title, g.genre, s.t_id, s.date_time, s.movie_language, t.max_capacity, t.is_3D, t.premium_sound "
+        "FROM movies m, schedule s, theaters t, movies_genres g "
+        "WHERE m.m_id = s.m_id AND s.t_id = t.t_id and g.movie_id = m.movie_id"
     )   
+    if mov_tit != "":
+        query = query + "AND m.title = %(t)s "
+    if genre != "":
+        query = query + "And "
