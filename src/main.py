@@ -11,7 +11,7 @@ user_email, user_id, user_type = login(db)
 print("Welcome back,", user_email,". Logged in as:", user_type)
 
 if user_type == "user":
-    user1 = Client(user_email, db)
+    user1 = Client(user_id, db)
     client_menu(user1)
 else:
     admin1 = Admin(user_email, db)
