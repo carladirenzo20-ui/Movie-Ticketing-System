@@ -59,16 +59,6 @@ class Client:
         if function_pay == 4:
             pass
 
-
-
-
-
-
-
-
-
-
-
 def client_menu(client):
     while True:
         function_menu = int(input("Select one of the following functions:\n1. Search movie screenings\n2. Buy tickets\n3. View previous purchases\n4. Manage payment methods\n5. Exit\n"))
@@ -82,15 +72,7 @@ def client_menu(client):
             print(client.pay_met())
         if function_menu == 5:
             break
-
-
-
-
-
-
-
-
-
+        
 prev_purch_query = (
     "SELECT tot_amount, ticket_sold, payment_type, screening_date, screening_time "
     "FROM ticket_purchase "

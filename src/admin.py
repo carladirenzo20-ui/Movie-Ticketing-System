@@ -31,22 +31,36 @@ class Admin:
         cursor.execute(screen_sched_query)
         return cursor.fetchall() 
     def remain_cap(self):
-        pass 
+        cursor = self.connector.cursor()
+        cursor.execute(remain_cap_query)
+        return cursor.fetchall()
     def view_anal(self):
         pass
-    def exit(self):
-        pass 
 
-
-
+def admin_menu(admin):
+    while True:
+        function_menu = int(input("Select one of the following functions:\n1. Add a movie screening\n2. View the screening schedule\n3. View remaining capacity\n4. View analytics\n5. Exit\n"))
+        if function_menu == 1:
+            print(admin.src_mov_screens())
+        if function_menu == 2:
+            print(admin.screen_sched())
+        if function_menu == 3:
+            print(admin.remain_cap())
+        if function_menu == 4:
+            pass
+        if function_menu == 5:
+            break
+        
 screen_sched_query = (
     "SELECT * "
     "FROM schedule;"
 )
 
-
-
-
+remain_cap_query = (
+    "Select (t.max_capacity - s.tickets_sold) as remaining_capacity "
+    "from theaters t, schedule s "
+    "where s.room_id = t.room_id;"
+)
 
 add_mov_screen_query = """
 INSERT INTO Schedule (room_id, screening_date, screening_time, movie_language, movie_id)

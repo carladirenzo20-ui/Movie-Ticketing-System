@@ -2,6 +2,8 @@ from database import connector
 from database import login
 from client import Client
 from client import client_menu
+from admin import Admin
+from admin import admin_menu
 
 db = connector()
 if db == None:
