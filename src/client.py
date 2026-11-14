@@ -24,11 +24,14 @@ class Client:
         except:
             print("Unexpected error in the query\n")
 
+    def buy_tickets():
+        pass
+
     def prev_purch(self):
         cursor = self.connector.cursor()
         try:
             cursor.execute(prev_purch_query, {"i": self.id})
-            return cursor.fetchone()
+            return cursor.fetchall()
         except:
             print("Unexpected error in the query\n")
 
@@ -36,9 +39,25 @@ class Client:
         cursor = self.connector.cursor()
         function_pay = int(input("Select one of the following functions:\n1. View registered payment methods \n2. Delete registered payment methods \n3. Add new payment method \n4. Go back to menu"))
 
+        #View registered payment methods
         if function_pay == 1:
             cursor.execute(view_pay_met_query, {"i": self.id})
             return cursor.fetchall()
+        #Delete registered payment methods
+        if function_pay == 2:
+            try:
+                pmi = input("Write the registered payment id you want to delete. To view your payment ids, go back and select 'View registered payment methods'")
+                cursor.execute(del_pay_met_query, {"i": self.id, "pmi": pmi})
+                self.connector.commit()
+                print("Payment method deleted successfully\n")
+            except:
+                print("Deletion unsuccessful\n")
+        #Add new payment method
+        if function_pay == 3:
+            pass
+        #Go back to menu
+        if function_pay == 4:
+            pass
 
 
 
@@ -85,9 +104,16 @@ view_pay_met_query = (
     "WHERE client_id = %(i)s;"
 )
 
-del_pay_met_query = ()
+del_pay_met_query = (
+    "DELETE "
+    "FROM payment_method "
+    "WHERE client_id = %(i)s "
+    "AND p_method_id = %(pmi)s "
+)
 
-add_pay_met_query = ()
+add_pay_met_query = (
+    "INSERT "
+)
 
 def src_mov_screens_query(mov_tit, genre, language, date, time):
     #DA INSERIRE TICKET PRICE E CAPIRE AVAILABLE SEATS COME FARLO DECRESCERE
