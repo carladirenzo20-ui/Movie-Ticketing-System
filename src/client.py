@@ -1,4 +1,15 @@
 from datetime import datetime
+from mysql.connector import Error
+from booking import book_tickets
+
+
+def display_rows(headers, rows):
+    print(" | ".join(headers))
+    if not rows:
+        print("No results.")
+    for row in rows:
+        print(" | ".join(str(value) for value in row))
+
 
 class Client:
     def __init__(self, id, connector):
@@ -6,112 +17,214 @@ class Client:
         self.connector = connector
 
     def src_mov_screens(self):
-        cursor = self.connector.cursor()
-        print("Search based on preferences. If you want to leave a preference blank, press 'start\n")
-        title = input("Enter the movie title'\n")
-        genre = input("Enter the movie genre\n")
-        language = input("Enter the movie language\n")
-        date = input("Enter the screening date. Valid format: 'YYYYMMDD'\n")
-        time = input("Enter the screening time. Valid format. 'hhmm'\n")
+        cursor = None
         try:
-            if date != "":
-                date = datetime.strptime(date, '%Y%m%d').date()
-            if time != "":
-                time = datetime.strptime(time+"00", "%H%M%S").time()
-            query = src_mov_screens_query(title, genre, language, date, time)
-            cursor.execute(query, {"t": title, "g": genre, "l": language, "sd": date, "st": time})
-            return cursor.fetchall()
-        except:
-            print("Unexpected error in the query\n")
+            print("Search screenings. Press Enter to skip any filter.")
+            title = input("Movie title: ").strip()
+            genre = input("Genre: ").strip()
+            language = input("Language: ").strip()
+            date = input("Date (YYYY-MM-DD): ").strip()
+            time = input("Time (HH:MM): ").strip()
+            if date:
+                date = datetime.strptime(date.replace("-", ""), "%Y%m%d").date()
+            if time:
+                time = datetime.strptime(time.replace(":", ""), "%H%M").time()
+            self.connector.rollback()
+            cursor = self.connector.cursor(buffered=True)
+            cursor.execute(src_mov_screens_query(title, genre, language, date, time),
+                           {"t": title, "g": genre, "l": language, "sd": date, "st": time})
+            rows = cursor.fetchall()
+            display_rows(("Movie", "Theater", "Date", "Time", "Language", "Price (EUR)",
+                          "Available seats", "3D", "Enhanced sound"), rows)
+            return rows
+        except ValueError:
+            print("Invalid date or time. Use YYYY-MM-DD and HH:MM.")
+            return []
+        except Error as err:
+            print("Could not search screenings:", err)
+            return []
+        finally:
+            self.connector.rollback()
+            if cursor is not None:
+                cursor.close()
 
-    def buy_tickets():
-        pass
+    def buy_tickets(self):
+        cursor = None
+        try:
+            room_id = int(input("Theater ID: "))
+            screening_date = datetime.strptime(input("Date (YYYY-MM-DD): "), "%Y-%m-%d").date()
+            screening_time = datetime.strptime(input("Time (HH:MM): "), "%H:%M").time()
+            quantity = int(input("Number of tickets: "))
+            self.connector.rollback()
+            cursor = self.connector.cursor(buffered=True)
+            cursor.execute(
+                "SELECT p_method_id, payment_type FROM Payment_Method WHERE client_id = %s",
+                (self.id,),
+            )
+            methods = cursor.fetchall()
+            if not methods:
+                self.connector.rollback()
+                print("Register a payment method before buying tickets.")
+                return
+            for method_id, payment_type in methods:
+                print(f"{method_id}: {payment_type}")
+            payment_method_id = int(input("Payment method ID: "))
+            self.connector.rollback()
+            purchase_id, total = book_tickets(
+                self.connector, self.id, room_id, screening_date,
+                screening_time, quantity, payment_method_id,
+            )
+            print(f"Purchase {purchase_id} confirmed: {quantity} ticket(s), EUR {total:.2f}.")
+        except ValueError as err:
+            self.connector.rollback()
+            print(f"Purchase rejected: {err}")
+        except Error as err:
+            self.connector.rollback()
+            print(f"Purchase failed: {err}")
+        finally:
+            if cursor is not None:
+                cursor.close()
 
     def prev_purch(self):
-        cursor = self.connector.cursor()
+        cursor = None
         try:
+            self.connector.rollback()
+            cursor = self.connector.cursor(buffered=True)
             cursor.execute(prev_purch_query, {"i": self.id})
-            return cursor.fetchall()
-        except:
-            print("Unexpected error in the query\n")
+            rows = cursor.fetchall()
+            display_rows(("Total (EUR)", "Tickets", "Payment type", "Date", "Time"), rows)
+            return rows
+        except Error as err:
+            print("Could not load purchase history:", err)
+            return []
+        finally:
+            self.connector.rollback()
+            if cursor is not None:
+                cursor.close()
 
     def pay_met(self):
-        cursor = self.connector.cursor()
-        function_pay = int(input("Select one of the following functions:\n1. View registered payment methods \n2. Delete registered payment methods \n3. Add new payment method \n4. Go back to menu"))
-
-        #View registered payment methods
-        if function_pay == 1:
-            cursor.execute(view_pay_met_query, {"i": self.id})
-            return cursor.fetchall()
-        #Delete registered payment methods
-        if function_pay == 2:
+        while True:
             try:
-                pmi = input("Write the registered payment id you want to delete. To view your payment ids, go back and select 'View registered payment methods'")
-                cursor.execute(del_pay_met_query, {"i": self.id, "pmi": pmi})
+                choice = int(input("1. View payment methods\n2. Delete payment method\n"
+                                   "3. Add payment method\n4. Go back\n"))
+                if choice in (1, 2, 3, 4):
+                    break
+            except ValueError:
+                pass
+            print("Choose a number from 1 to 4.")
+        if choice == 4:
+            return []
+        cursor = None
+        try:
+            self.connector.rollback()
+            cursor = self.connector.cursor(buffered=True)
+            if choice == 1:
+                cursor.execute(view_pay_met_query, {"i": self.id})
+                rows = cursor.fetchall()
+                display_rows(("ID", "Payment type", "Card/account", "Billing address", "Expiry"), rows)
+                self.connector.rollback()
+                return rows
+            if choice == 2:
+                method_id = int(input("Payment method ID to delete: "))
+                cursor.execute(del_pay_met_query, {"i": self.id, "pmi": method_id})
+                if cursor.rowcount == 0:
+                    self.connector.rollback()
+                    print("Payment method not found for this client.")
+                    return []
                 self.connector.commit()
-                print("Payment method deleted successfully\n")
-            except:
-                print("Deletion unsuccessful\n")
-        #Add new payment method
-        if function_pay == 3:
-            pass
-        #Go back to menu
-        if function_pay == 4:
-            pass
+                print("Payment method deleted successfully.")
+            if choice == 3:
+                payment_type = input("Payment type: ").strip()
+                card_number = input("Card number or account reference: ").strip()
+                billing_address = input("Billing address (Enter if not applicable): ").strip()
+                expiry = datetime.strptime(input("Expiry date (YYYY-MM-DD): ").strip(), "%Y-%m-%d").date()
+                if not payment_type or not card_number:
+                    raise ValueError("Payment type and card/account reference are required.")
+                cursor.execute(add_pay_met_query,
+                               (self.id, payment_type, card_number, billing_address or None, expiry))
+                method_id = cursor.lastrowid
+                self.connector.commit()
+                print(f"Payment method {method_id} added successfully.")
+            return []
+        except ValueError as err:
+            self.connector.rollback()
+            print("Invalid payment details:", err)
+            return []
+        except Error as err:
+            self.connector.rollback()
+            if err.errno == 1451:
+                print("Cannot delete a payment method used by a previous purchase.")
+            else:
+                print("Payment operation failed:", err)
+            return []
+        finally:
+            if cursor is not None:
+                cursor.close()
+
 
 def client_menu(client):
     while True:
-        function_menu = int(input("Select one of the following functions:\n1. Search movie screenings\n2. Buy tickets\n3. View previous purchases\n4. Manage payment methods\n5. Exit\n"))
-        if function_menu == 1:
-            print(client.src_mov_screens())
-        if function_menu == 2:
-            pass
-        if function_menu == 3:
-            print(client.prev_purch())
-        if function_menu == 4:
-            print(client.pay_met())
-        if function_menu == 5:
+        try:
+            choice = int(input("1. Search movie screenings\n2. Buy tickets\n"
+                               "3. View previous purchases\n4. Manage payment methods\n5. Exit\n"))
+        except ValueError:
+            print("Choose a number from 1 to 5.")
+            continue
+        if choice == 1:
+            client.src_mov_screens()
+        elif choice == 2:
+            client.buy_tickets()
+        elif choice == 3:
+            client.prev_purch()
+        elif choice == 4:
+            client.pay_met()
+        elif choice == 5:
             break
-        
-prev_purch_query = (
-    "SELECT tot_amount, ticket_sold, payment_type, screening_date, screening_time "
-    "FROM ticket_purchase "
-    "WHERE client_id = %(i)s "
-    "ORDER BY screening_date DESC;"
-)
+        else:
+            print("Choose a number from 1 to 5.")
 
-view_pay_met_query = (
-    "SELECT payment_type, card_number, billing_address, expiring_date "
-    "FROM  payment_method "
-    "WHERE client_id = %(i)s;"
-)
 
-del_pay_met_query = (
-    "DELETE "
-    "FROM payment_method "
-    "WHERE client_id = %(i)s "
-    "AND p_method_id = %(pmi)s "
-)
+prev_purch_query = """
+SELECT tot_amount, ticket_sold, payment_type, screening_date, screening_time
+FROM Ticket_Purchase
+WHERE client_id = %(i)s
+ORDER BY screening_date DESC, screening_time DESC
+"""
 
-add_pay_met_query = (
-    "INSERT "
-)
+view_pay_met_query = """
+SELECT p_method_id, payment_type, card_number, billing_address, expiring_date
+FROM Payment_Method WHERE client_id = %(i)s ORDER BY p_method_id
+"""
+
+del_pay_met_query = """
+DELETE FROM Payment_Method WHERE client_id = %(i)s AND p_method_id = %(pmi)s
+"""
+
+add_pay_met_query = """
+INSERT INTO Payment_Method (client_id, payment_type, card_number, billing_address, expiring_date)
+VALUES (%s, %s, %s, %s, %s)
+"""
+
 
 def src_mov_screens_query(mov_tit, genre, language, date, time):
-    #DA INSERIRE TICKET PRICE E CAPIRE AVAILABLE SEATS COME FARLO DECRESCERE
-    query = (
-        "SELECT m.title, g.genre, s.room_id, s.screening_date, s.screening_time, s.movie_language, t.max_capacity, t.is_3D, t.premium_sound "
-        "FROM movies m, schedule s, theaters t, movie_genres g "
-        "WHERE m.movie_id = s.movie_id AND s.room_id = t.room_id and g.movie_id = m.movie_id "
-    )   
-    if mov_tit != "":
-        query = query + "AND m.title = %(t)s "
-    if genre != "":
-        query = query + "And g.genre = %(g)s "
-    if language != "":
-        query = query + "And s.movie_language = %(l)s "
-    if date != "":
-        query = query + "And s.screening_date = %(sd)s "
-    if time != "":
-        query = query + "And s.screening_time = %(st)s "
-    return query
+    query = """
+        SELECT m.title, s.room_id, s.screening_date, s.screening_time, s.movie_language,
+               CAST((15 + 5 * t.is_3D + 3 * t.premium_sound) *
+                    CASE WHEN m.release_date < DATE_SUB(s.screening_date, INTERVAL 2 YEAR)
+                         THEN 0.80 ELSE 1.00 END AS DECIMAL(10,2)) AS ticket_price,
+               t.max_capacity - s.tickets_sold AS available_seats, t.is_3D, t.premium_sound
+        FROM Movies m JOIN Schedule s ON m.movie_id = s.movie_id
+        JOIN Theaters t ON s.room_id = t.room_id
+        WHERE 1 = 1
+    """
+    if mov_tit:
+        query += " AND m.title LIKE CONCAT('%', %(t)s, '%')"
+    if genre:
+        query += " AND EXISTS (SELECT 1 FROM Movie_Genres g WHERE g.movie_id = m.movie_id AND g.genre = %(g)s)"
+    if language:
+        query += " AND s.movie_language = %(l)s"
+    if date:
+        query += " AND s.screening_date = %(sd)s"
+    if time:
+        query += " AND s.screening_time = %(st)s"
+    return query + " ORDER BY s.screening_date, s.screening_time, s.room_id"
