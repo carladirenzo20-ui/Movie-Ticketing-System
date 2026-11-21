@@ -27,12 +27,16 @@ def connector():
 
 user_id_mail_query = """
 SELECT u.user_id,
-       CASE WHEN a.user_id IS NOT NULL THEN 'admin'
-            WHEN c.user_id IS NOT NULL THEN 'user' END AS user_type
+       CASE WHEN a.user_id IS NOT NULL AND c.user_id IS NULL THEN 'admin'
+            WHEN c.user_id IS NOT NULL AND a.user_id IS NULL THEN 'user'
+       END AS user_type
 FROM Users u
 LEFT JOIN Administrator a ON a.user_id = u.user_id
 LEFT JOIN Client c ON c.user_id = u.user_id
-WHERE u.email = %(e)s AND u.password = %(p)s
+WHERE u.email = %(e)s
+  -- Compare password bytes in a common encoding, independent of the collation.
+  AND CAST(CONVERT(u.password USING utf8mb4) AS BINARY)
+      = CAST(CONVERT(%(p)s USING utf8mb4) AS BINARY)
 """
 
 

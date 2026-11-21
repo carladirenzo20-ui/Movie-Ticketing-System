@@ -20,11 +20,6 @@ class Admin:
             self.connector.rollback()
             cursor = self.connector.cursor()
             cursor.execute(add_mov_screen_query, {"ri": room_id, "sd": screening_date, "st": screening_time, "ml": movie_language, "mi": movie_id})
-            if cursor.rowcount == 0:
-                self.connector.rollback()
-                print("Screening rejected: unknown movie/room, language not available, "
-                      "outside 10:00-23:59, or room already occupied.")
-                return False
             self.connector.commit()
             print("Screening added.")
             return True
@@ -34,7 +29,10 @@ class Admin:
             return False
         except Error as err:
             self.connector.rollback()
-            print("Could not add screening:", err)
+            if err.sqlstate == "45000":
+                print(f"Screening rejected: {err.msg}")
+            else:
+                print("Could not add screening:", err)
             return False
         finally:
             if cursor is not None:
@@ -153,26 +151,5 @@ ORDER BY revenue DESC;
 
 add_mov_screen_query = """
 INSERT INTO Schedule (room_id, screening_date, screening_time, movie_language, movie_id)
-SELECT t.room_id, %(sd)s, %(st)s, mlang.available_language, m.movie_id
-FROM Movies m
-JOIN Movie_Languages mlang
-       ON mlang.movie_id = m.movie_id
-      AND mlang.available_language = %(ml)s            -- language available for the movie
-JOIN Theaters t
-       ON t.room_id = %(ri)s                           -- theater exists
-WHERE m.movie_id = %(mi)s                              -- movie exists
-  AND TIME(%(st)s) >= '10:00:00'                       -- not before opening
-  AND TIMESTAMP(%(sd)s, %(st)s) + INTERVAL m.running_time MINUTE
-        <= TIMESTAMP(%(sd)s, '23:59:00')               -- ends before closing
-  AND NOT EXISTS (                                     -- no overlap in the same room
-        SELECT 1
-        FROM Schedule s
-        JOIN Movies m2 ON m2.movie_id = s.movie_id
-        WHERE s.room_id = t.room_id
-          AND s.screening_date = %(sd)s
-          AND TIMESTAMP(s.screening_date, s.screening_time)
-                < TIMESTAMP(%(sd)s, %(st)s) + INTERVAL m.running_time MINUTE
-          AND TIMESTAMP(s.screening_date, s.screening_time) + INTERVAL m2.running_time MINUTE
-                > TIMESTAMP(%(sd)s, %(st)s)
-  )
+VALUES (%(ri)s, %(sd)s, %(st)s, %(ml)s, %(mi)s)
 """

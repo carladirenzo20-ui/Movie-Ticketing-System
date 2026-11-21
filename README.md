@@ -64,14 +64,14 @@ The application retrieves each account's role from the database. Clients can sea
 ## Design assumptions
 
 - A cinema has multiple theaters. Each screening is identified by theater, date and start time; seats are sold as quantities without assigned seat numbers.
-- `Users.user_id` is a surrogate identifier. Email remains unique. Client and administrator roles are represented by subtype tables; an account appearing in both receives administrator access.
-- Movie genres and available languages are normalized into separate tables. A screening's language must be available for its movie.
-- The whole screening must fit between 10:00 and 23:59. Screenings in the same theater cannot overlap; one may start exactly when another ends.
-- Each screening stores its sold-ticket count. A booking changes this count and records the purchase in one transaction.
-- Payment details belong to a client. New bookings require one of that client's registered methods. Historical cash purchases may have no registered method. Methods referenced by purchases cannot be deleted, so purchase history remains valid.
+- `Users.user_id` is a surrogate identifier. Email remains unique. Each user has one account role. A client must have an address, and the client and administrator subtype rows must match the stored role.
+- Every movie has a description and a primary genre. Additional genres are stored separately, and screening search uses the `Movie_Genres` view to read both. A screening's language must be available for its movie.
+- The whole screening must fit between 10:00 and 23:59. A screening may start exactly when the previous one ends. MySQL validates screening writes and any runtime increase that could affect the schedule.
+- Each screening stores its sold-ticket count. A booking changes this count and records the purchase in one transaction. MySQL rejects sold counts above capacity and capacity reductions below the sold count of any screening.
+- Payment details belong to a client. A non-cash purchase must reference a registered method belonging to that client, with a matching payment type. Historical cash purchases record cash as the payment type. Methods referenced by purchases cannot be deleted.
 - Card number, billing address and expiry date are single values per payment method. The ER diagram's `card_balance` is not maintained: this project records purchases without processing real payments or maintaining account balances.
 - Ticket price is EUR 15, plus EUR 5 for 3D and EUR 3 for enhanced sound. A movie released more than two calendar years before the screening gets a 20% discount on the complete ticket price; exactly two years does not qualify. Purchases store the total charged at purchase time.
-- Data and credentials are synthetic classroom examples. Values such as `hash_pwd_1` are literal demonstration passwords.
+- Data and credentials are synthetic classroom examples. Values such as `hash_pwd_1` are literal, case-sensitive demonstration passwords.
 
 ## SQL queries
 
@@ -87,9 +87,9 @@ Run the automated checks against a running MySQL server using the connection var
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Tests create and remove uniquely named test databases instead of changing `cinema_db`. The test account needs permission to create/drop databases and create test triggers. The suite covers application inputs, screening validation, payment management, pricing, booking rollback, competing purchases and analytics. Read the test output for the current results.
+Tests create and remove uniquely named test databases instead of changing `cinema_db`. The test account needs permission to create and drop databases, create tables, views, routines and triggers, and execute the screening validation routine. The suite covers authentication, required records, screening validation, payment management, pricing, booking rollback, concurrent writes and analytics.
 
-Verification: all 22 automated tests passed on MySQL 8.0.46. The SQL setup and five queries also ran successfully through the MySQL client, and both application menus were exercised through `src/main.py` against a separate temporary MySQL server.
+All 30 tests passed on MySQL 8.0.46 with Connector/Python 9.0.0 and 26.10.0. The MySQL client ran the setup and all five queries. Two independent application processes completed the last-seat demonstration with one successful purchase and one sold-out rejection.
 
 ## Part 6: booking transaction
 
@@ -98,7 +98,7 @@ Client menu option 2 collects the screening, ticket quantity and a registered pa
 `book_tickets` in `src/booking.py` performs the following steps:
 
 1. Start a MySQL transaction.
-2. Lock the selected `Schedule` row with `SELECT ... FOR UPDATE`.
+2. Lock the theater row, then the selected `Schedule` row, with `SELECT ... FOR UPDATE`.
 3. Check remaining capacity and payment ownership, and calculate the total.
 4. Insert the purchase.
 5. Increase `tickets_sold`.
@@ -108,7 +108,7 @@ The function expects no existing transaction; the client interface ends its earl
 
 The ticket price starts at EUR 15, adds EUR 5 for 3D and EUR 3 for enhanced sound, then applies a 20% discount to the complete price when the release date is strictly earlier than the screening date minus two calendar years. Exactly two years does not qualify. The total is the ticket price multiplied by quantity.
 
-`FOR UPDATE` keeps another buyer from checking and changing the same screening until the first transaction commits or rolls back. The second buyer then checks the updated sold count. Without the lock, both buyers could read one remaining seat and both attempt to sell it.
+The theater lock keeps capacity stable and lets bookings acquire locks in the same order as new screenings. The screening lock protects the row that controls availability and provides the current sold count. A second buyer checks availability only after the first transaction commits or rolls back.
 
 ### Manual last-seat demonstration
 
@@ -130,13 +130,13 @@ On untouched seed data, the movies with purchases have these results:
 
 | Movie | Purchases | Revenue (EUR) |
 | --- | ---: | ---: |
-| Parasite | 2 | 128.80 |
-| Dune: Part Two | 1 | 108.00 |
+| Dune: Part Two | 1 | 144.00 |
+| Parasite | 2 | 100.80 |
 | Inception | 3 | 50.40 |
 | Avatar: The Way of Water | 1 | 32.00 |
 | Interstellar | 1 | 12.00 |
 
-All other movies, including the recent synthetic movie **The Last Lantern**, have zero purchases and zero revenue. Total seed revenue is **EUR 331.20**. New bookings change these results. The Last Lantern screening in room 1 on **2026-11-23 at 16:00** costs EUR 15 per ticket and demonstrates undiscounted pricing.
+All other movies, including the recent synthetic movie **The Last Lantern**, have zero purchases and zero revenue. Total seed revenue is **EUR 339.20**. New bookings change these results. The Last Lantern screening in room 1 on **2026-11-23 at 16:00** costs EUR 15 per ticket and demonstrates undiscounted pricing.
 
 The required cases and their expected outcomes are:
 

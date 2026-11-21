@@ -26,6 +26,30 @@ from client import Client, client_menu
 from database import login
 
 
+def load_project_sql(cursor, filename):
+    delimiter = ";"
+    statement_lines = []
+    source = (ROOT / filename).read_text(encoding="utf-8")
+    for raw_line in source.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("--"):
+            continue
+        if line.upper().startswith("DELIMITER "):
+            if statement_lines:
+                raise ValueError(f"Unfinished SQL statement before DELIMITER in {filename}")
+            delimiter = line.split(maxsplit=1)[1]
+            continue
+        statement_lines.append(raw_line)
+        if line.endswith(delimiter):
+            statement = "\n".join(statement_lines).rstrip()[:-len(delimiter)].strip()
+            # Each test sets its own database before loading the project SQL.
+            if not statement.upper().startswith(("DROP DATABASE", "CREATE DATABASE", "USE ")):
+                cursor.execute(statement)
+            statement_lines.clear()
+    if statement_lines:
+        raise ValueError(f"Unfinished SQL statement at end of {filename}")
+
+
 class MySQLTests(unittest.TestCase):
     def setUp(self):
         self.config = {
@@ -38,24 +62,14 @@ class MySQLTests(unittest.TestCase):
         self.db = mysql.connector.connect(**self.config)
         self.addCleanup(self.db.close)
         self.database = "cinema_test_" + uuid4().hex
-        cursor = self.db.cursor()
-        cursor.execute(f"CREATE DATABASE `{self.database}`")
-        self.addCleanup(self.drop_database)
-        cursor.execute(f"USE `{self.database}`")
-        self.config["database"] = self.database
-
-        # Use the same schema and seed files supplied for the application.
-        for filename in ("schema.sql", "data.sql"):
-            source = (ROOT / filename).read_text(encoding="utf-8")
-            source = "\n".join(line for line in source.splitlines()
-                               if not line.lstrip().startswith("--"))
-            for statement in source.split(";"):
-                statement = statement.strip()
-                if statement and not statement.upper().startswith(
-                        ("DROP DATABASE", "CREATE DATABASE", "USE ")):
-                    cursor.execute(statement)
+        with self.db.cursor() as cursor:
+            cursor.execute(f"CREATE DATABASE `{self.database}`")
+            self.addCleanup(self.drop_database)
+            cursor.execute(f"USE `{self.database}`")
+            self.config["database"] = self.database
+            for filename in ("schema.sql", "data.sql"):
+                load_project_sql(cursor, filename)
         self.db.commit()
-        cursor.close()
 
     def drop_database(self):
         self.db.rollback()
@@ -93,7 +107,7 @@ class Parts67Tests(MySQLTests):
     def test_successful_booking(self):
         purchase_id, total = self.purchase()
         self.assertGreater(purchase_id, 8)
-        self.assertEqual(total, Decimal("12.00"))
+        self.assertEqual(total, Decimal("16.00"))
         self.assertEqual(self.state(), (10, 2, 10))
 
     def test_invalid_payment(self):
@@ -164,12 +178,15 @@ class Parts67Tests(MySQLTests):
         self.query("UPDATE Movies SET release_date = '2024-11-14' WHERE movie_id = 1")
         cases = [(1, "2026-11-15", "15:30:00", "12.00"),
                  (2, "2026-11-15", "18:30:00", "14.40"),
-                 (3, "2026-11-15", "19:30:00", "16.00"),
-                 (4, "2026-11-16", "16:00:00", "18.40")]
+                 (99, "2026-11-15", "19:30:00", "16.00"),
+                 (2, "2026-11-16", "16:00:00", "14.40")]
         for room, day, time, price in cases:
             with self.subTest(room=room):
                 _, total = book_tickets(self.db, 1, room, day, time, 1, 1)
                 self.assertEqual(total, Decimal(price))
+        self.query("UPDATE Theaters SET premium_sound = TRUE WHERE room_id = 99")
+        _, total = book_tickets(self.db, 1, 99, "2026-11-15", "19:30:00", 1, 1)
+        self.assertEqual(total, Decimal("18.40"))
 
     def test_invalid_login(self):
         output = StringIO()
@@ -188,20 +205,22 @@ class Parts67Tests(MySQLTests):
                  {"st": "09:00:00"}, {"st": "23:00:00"}, {"st": "16:00:00"}]
         for changes in cases:
             with self.subTest(changes=changes):
-                self.assertEqual(self.query(add_mov_screen_query, base | changes), 0)
+                with self.assertRaisesRegex(mysql.connector.Error, r"1644 \(45000\)"):
+                    self.query(add_mov_screen_query, base | changes)
+                self.db.rollback()
         self.assertEqual(self.query(add_mov_screen_query, base), 1)
 
     def test_analytics_from_admin_menu(self):
         output = StringIO()
         with patch("builtins.input", side_effect=["4", "5"]), redirect_stdout(output):
             admin_menu(Admin(99, self.db))
-        for expected in ["Parasite | 2 | 128.80", "Inception | 3 | 50.40",
-                         "Dune: Part Two | 1 | 108.00", "Spirited Away | 0 | 0.00"]:
+        for expected in ["Parasite | 2 | 100.80", "Inception | 3 | 50.40",
+                         "Dune: Part Two | 1 | 144.00", "The Last Lantern | 0 | 0.00"]:
             self.assertIn(expected, output.getvalue())
         with redirect_stdout(StringIO()):
             rows = Admin(99, self.db).view_anal()
-        self.assertEqual(len(rows), 9)
-        self.assertEqual(sum(row[2] for row in rows), Decimal("331.20"))
+        self.assertEqual(len(rows), 8)
+        self.assertEqual(sum(row[2] for row in rows), Decimal("339.20"))
         # A later report on the same connection must see another client's sale.
         other = mysql.connector.connect(**self.config)
         try:
@@ -210,7 +229,7 @@ class Parts67Tests(MySQLTests):
             other.close()
         with redirect_stdout(StringIO()):
             updated = Admin(99, self.db).view_anal()
-        self.assertIn(("Dune: Part Two", 2, Decimal("120.00")), updated)
+        self.assertIn(("Dune: Part Two", 2, Decimal("160.00")), updated)
 
     def test_booking_from_client_menu_after_login(self):
         output = StringIO()
@@ -221,7 +240,7 @@ class Parts67Tests(MySQLTests):
                 "2", "99", "2026-11-25", "21:00", "1", "1", "5"]):
             with redirect_stdout(output):
                 client_menu(Client(client_id, self.db))
-        self.assertIn("confirmed: 1 ticket(s), EUR 12.00", output.getvalue())
+        self.assertIn("confirmed: 1 ticket(s), EUR 16.00", output.getvalue())
         self.assertEqual(self.state(), (10, 2, 10))
 
 

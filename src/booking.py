@@ -20,6 +20,12 @@ def book_tickets(db, client_id, room_id, screening_date, screening_time,
         cursor = db.cursor(dictionary=True, buffered=True)
         screening_key = (room_id, screening_date, screening_time)
 
+        # Acquire the room lock before the screening lock, as scheduling changes do.
+        cursor.execute("SELECT max_capacity FROM Theaters WHERE room_id = %s FOR UPDATE", (room_id,))
+        theater = cursor.fetchone()
+        if theater is None:
+            raise BookingError("Screening not found.")
+
         # Only one buyer at a time can check and change this screening's sold count.
         cursor.execute("""
             SELECT tickets_sold, movie_id
@@ -32,15 +38,14 @@ def book_tickets(db, client_id, room_id, screening_date, screening_time,
             raise BookingError("Screening not found.")
 
         cursor.execute("""
-            SELECT t.max_capacity,
-                   (15 + 5 * t.is_3D + 3 * t.premium_sound) *
+            SELECT (15 + 5 * t.is_3D + 3 * t.premium_sound) *
                    CASE WHEN m.release_date < DATE_SUB(%s, INTERVAL 2 YEAR)
                         THEN 0.80 ELSE 1.00 END AS ticket_price
             FROM Theaters t CROSS JOIN Movies m
             WHERE t.room_id = %s AND m.movie_id = %s
         """, (screening_date, room_id, screening["movie_id"]))
         details = cursor.fetchone()
-        available = details["max_capacity"] - screening["tickets_sold"]
+        available = theater["max_capacity"] - screening["tickets_sold"]
         if quantity > available:
             raise BookingError(f"Not enough seats: {available} remaining.")
 

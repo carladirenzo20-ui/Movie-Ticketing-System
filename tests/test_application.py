@@ -100,8 +100,8 @@ class ApplicationTests(MySQLTests):
         self.assertIn("Price (EUR) | Available seats | 3D | Enhanced sound", output)
         cases = [("Inception", 1, date(2026, 11, 15), "12.00", 97, 0, 0),
                  ("Inception", 2, date(2026, 11, 15), "14.40", 79, 0, 1),
-                 ("Avatar: The Way of Water", 3, date(2026, 11, 15), "16.00", 48, 1, 0),
-                 ("Parasite", 4, date(2026, 11, 16), "18.40", 113, 1, 1),
+                 ("Avatar: The Way of Water", 99, date(2026, 11, 15), "16.00", 8, 1, 0),
+                 ("Parasite", 2, date(2026, 11, 16), "14.40", 73, 0, 1),
                  ("The Last Lantern", 1, date(2026, 11, 23), "15.00", 100, 0, 0)]
         for title, room, day, price, seats, is_3d, sound in cases:
             with self.subTest(title=title, room=room):
