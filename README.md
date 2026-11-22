@@ -66,12 +66,14 @@ The application retrieves each account's role from the database. Clients can sea
 - A cinema has multiple theaters. Each screening is identified by theater, date and start time; seats are sold as quantities without assigned seat numbers.
 - `Users.user_id` is a surrogate identifier. Email remains unique. Each user has one account role. A client must have an address, and the client and administrator subtype rows must match the stored role.
 - Every movie has a description and a primary genre. Additional genres are stored separately, and screening search uses the `Movie_Genres` view to read both. A screening's language must be available for its movie.
-- The whole screening must fit between 10:00 and 23:59. A screening may start exactly when the previous one ends. MySQL validates screening writes and any runtime increase that could affect the schedule.
-- Each screening stores its sold-ticket count. A booking changes this count and records the purchase in one transaction. MySQL rejects sold counts above capacity and capacity reductions below the sold count of any screening.
+- The administrator's SQL query adds a screening only if the movie and theater exist, the movie is available in the selected language, the screening fits between 10:00 and 23:59, and it does not overlap another screening in the same theater. A screening may start exactly when the previous one ends.
+- Each screening stores its sold-ticket count. A booking checks remaining capacity, changes the sold count and records the purchase in one transaction.
 - Payment details belong to a client. A non-cash purchase must reference a registered method belonging to that client, with a matching payment type. Historical cash purchases record cash as the payment type. Methods referenced by purchases cannot be deleted.
 - Card number, billing address and expiry date are single values per payment method. The ER diagram's `card_balance` is not maintained: this project records purchases without processing real payments or maintaining account balances.
 - Ticket price is EUR 15, plus EUR 5 for 3D and EUR 3 for enhanced sound. A movie released more than two calendar years before the screening gets a 20% discount on the complete ticket price; exactly two years does not qualify. Purchases store the total charged at purchase time.
 - Data and credentials are synthetic classroom examples. Values such as `hash_pwd_1` are literal, case-sensitive demonstration passwords.
+
+Direct SQL writes can bypass the administrator query and the booking capacity check. Such writes can create or reschedule screenings outside operating hours or with overlaps, extend runtimes into a conflicting time slot or past closing, and leave sold counts higher than theater capacity. There is no explicit serialization of concurrent administrator scheduling requests, so the overlap check does not guarantee conflict-free scheduling across concurrent requests. The schema still enforces its foreign keys and CHECK constraints, including the screening's movie-language pairing and nonnegative sold counts.
 
 ## SQL queries
 
@@ -87,28 +89,26 @@ Run the automated checks against a running MySQL server using the connection var
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Tests create and remove uniquely named test databases instead of changing `cinema_db`. The test account needs permission to create and drop databases, create tables, views, routines and triggers, and execute the screening validation routine. The suite covers authentication, required records, screening validation, payment management, pricing, booking rollback, concurrent writes and analytics.
-
-All 30 tests passed on MySQL 8.0.46 with Connector/Python 9.0.0 and 26.10.0. The MySQL client ran the setup and all five queries. Two independent application processes completed the last-seat demonstration with one successful purchase and one sold-out rejection.
+Tests create and remove uniquely named test databases. The test account needs permission to create and drop those databases and create their tables, views and test-only triggers. The suite covers authentication, required records, screening validation, payment management, pricing, booking rollback, concurrent writes and analytics.
 
 ## Part 6: booking transaction
 
 Client menu option 2 collects the screening, ticket quantity and a registered payment-method ID. New bookings use a payment method belonging to the logged-in client; historical cash purchases in the seed data remain valid.
 
-`book_tickets` in `src/booking.py` performs the following steps:
+The booking transaction runs in `book_tickets` in `src/client.py`.
 
 1. Start a MySQL transaction.
 2. Lock the theater row, then the selected `Schedule` row, with `SELECT ... FOR UPDATE`.
 3. Check remaining capacity and payment ownership, and calculate the total.
 4. Insert the purchase.
 5. Increase `tickets_sold`.
-6. Commit both changes on success, or roll back on failure.
+6. Use `COMMIT` to save both changes on success or `ROLLBACK` to undo them on failure.
 
 The function expects no existing transaction; the client interface ends its earlier read transaction before calling it. User input is collected before the booking transaction starts so the lock is held only while checking and recording the purchase.
 
 The ticket price starts at EUR 15, adds EUR 5 for 3D and EUR 3 for enhanced sound, then applies a 20% discount to the complete price when the release date is strictly earlier than the screening date minus two calendar years. Exactly two years does not qualify. The total is the ticket price multiplied by quantity.
 
-The theater lock keeps capacity stable and lets bookings acquire locks in the same order as new screenings. The screening lock protects the row that controls availability and provides the current sold count. A second buyer checks availability only after the first transaction commits or rolls back.
+The theater lock keeps capacity stable during the booking. Each booking acquires the theater lock before the screening lock. The screening lock protects the row that controls availability and provides the current sold count. A second buyer checks availability only after the first transaction commits or rolls back.
 
 ### Manual last-seat demonstration
 
@@ -166,4 +166,4 @@ The allocation below records the division of work provided for this project.
 
 ## Project files
 
-`ER_diagram.pdf` is the group's supplied ER diagram. `schema.sql`, `data.sql` and `queries.sql` are the database deliverables. `src/` contains the application and booking transaction. `tests/` contains the automated checks.
+`ER_diagram.pdf` is the group's supplied ER diagram. `schema.sql`, `data.sql` and `queries.sql` are the database deliverables. `src/admin.py` contains administrator scheduling and reports, and `src/client.py` contains the client menu and booking transaction. `src/main.py` starts the application and `src/database.py` handles database connections and login. `tests/` contains the automated checks.

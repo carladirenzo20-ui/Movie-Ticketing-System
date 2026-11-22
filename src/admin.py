@@ -20,6 +20,11 @@ class Admin:
             self.connector.rollback()
             cursor = self.connector.cursor()
             cursor.execute(add_mov_screen_query, {"ri": room_id, "sd": screening_date, "st": screening_time, "ml": movie_language, "mi": movie_id})
+            if cursor.rowcount == 0:
+                self.connector.rollback()
+                print("Screening rejected. Check the movie ID, theater ID, and available language. "
+                      "Screenings must fit between 10:00 and 23:59 and cannot overlap in the same theater.")
+                return False
             self.connector.commit()
             print("Screening added.")
             return True
@@ -29,10 +34,7 @@ class Admin:
             return False
         except Error as err:
             self.connector.rollback()
-            if err.sqlstate == "45000":
-                print(f"Screening rejected: {err.msg}")
-            else:
-                print("Could not add screening:", err)
+            print("Could not add screening:", err)
             return False
         finally:
             if cursor is not None:
@@ -151,5 +153,23 @@ ORDER BY revenue DESC;
 
 add_mov_screen_query = """
 INSERT INTO Schedule (room_id, screening_date, screening_time, movie_language, movie_id)
-VALUES (%(ri)s, %(sd)s, %(st)s, %(ml)s, %(mi)s)
+SELECT t.room_id, %(sd)s, %(st)s, ml.available_language, m.movie_id
+FROM Movies m
+JOIN Movie_Languages ml ON ml.movie_id = m.movie_id AND ml.available_language = %(ml)s
+JOIN Theaters t ON t.room_id = %(ri)s
+WHERE m.movie_id = %(mi)s
+  AND TIME(%(st)s) >= '10:00:00'
+  AND TIMESTAMP(%(sd)s, %(st)s) + INTERVAL m.running_time MINUTE
+        <= TIMESTAMP(%(sd)s, '23:59:00')
+  AND NOT EXISTS (
+      SELECT 1
+      FROM Schedule s
+      JOIN Movies existing_movie ON existing_movie.movie_id = s.movie_id
+      WHERE s.room_id = t.room_id
+        AND s.screening_date = %(sd)s
+        AND TIMESTAMP(s.screening_date, s.screening_time)
+            < TIMESTAMP(%(sd)s, %(st)s) + INTERVAL m.running_time MINUTE
+        AND TIMESTAMP(s.screening_date, s.screening_time)
+            + INTERVAL existing_movie.running_time MINUTE > TIMESTAMP(%(sd)s, %(st)s)
+  )
 """

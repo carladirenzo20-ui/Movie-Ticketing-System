@@ -21,27 +21,20 @@ import mysql.connector
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from admin import Admin, add_mov_screen_query, admin_menu
-from booking import BookingError, book_tickets
-from client import Client, client_menu
+from client import BookingError, Client, book_tickets, client_menu
 from database import login
 
 
 def load_project_sql(cursor, filename):
-    delimiter = ";"
     statement_lines = []
     source = (ROOT / filename).read_text(encoding="utf-8")
     for raw_line in source.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("--"):
             continue
-        if line.upper().startswith("DELIMITER "):
-            if statement_lines:
-                raise ValueError(f"Unfinished SQL statement before DELIMITER in {filename}")
-            delimiter = line.split(maxsplit=1)[1]
-            continue
         statement_lines.append(raw_line)
-        if line.endswith(delimiter):
-            statement = "\n".join(statement_lines).rstrip()[:-len(delimiter)].strip()
+        if line.endswith(";"):
+            statement = "\n".join(statement_lines).rstrip()[:-1].strip()
             # Each test sets its own database before loading the project SQL.
             if not statement.upper().startswith(("DROP DATABASE", "CREATE DATABASE", "USE ")):
                 cursor.execute(statement)
@@ -205,9 +198,7 @@ class Parts67Tests(MySQLTests):
                  {"st": "09:00:00"}, {"st": "23:00:00"}, {"st": "16:00:00"}]
         for changes in cases:
             with self.subTest(changes=changes):
-                with self.assertRaisesRegex(mysql.connector.Error, r"1644 \(45000\)"):
-                    self.query(add_mov_screen_query, base | changes)
-                self.db.rollback()
+                self.assertEqual(self.query(add_mov_screen_query, base | changes), 0)
         self.assertEqual(self.query(add_mov_screen_query, base), 1)
 
     def test_analytics_from_admin_menu(self):
