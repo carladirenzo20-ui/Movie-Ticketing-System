@@ -161,6 +161,7 @@ The allocation below records the division of work provided for this project.
 | Work allocation | Contribution |
 | --- | --- |
 | Earlier group work | Parts 1-5: ER model, relational schema, data, SQL queries and initial application |
+| Alessandro Vertunni | Part 5: Initial application (main.py, admin.py, client.py, database.py); login; client menu; administrator menu |
 | This contribution | Parts 6-7: booking transaction, concurrency demonstration, analytics and testing; integration and fixes to the earlier application |
 
 ## Project files
