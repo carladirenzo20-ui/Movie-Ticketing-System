@@ -2,7 +2,6 @@ import os
 import mysql.connector
 from mysql.connector import errorcode
 
-
 def connector():
     try:
         return mysql.connector.connect(
@@ -24,7 +23,6 @@ def connector():
             print("Could not connect to MySQL:", err)
     return None
 
-
 user_id_mail_query = """
 SELECT u.user_id,
        CASE WHEN a.user_id IS NOT NULL AND c.user_id IS NULL THEN 'admin'
@@ -38,7 +36,6 @@ WHERE u.email = %(e)s
   AND CAST(CONVERT(u.password USING utf8mb4) AS BINARY)
       = CAST(CONVERT(%(p)s USING utf8mb4) AS BINARY)
 """
-
 
 def login(db):
     cursor = db.cursor(buffered=True)

@@ -3,7 +3,6 @@ from database import connector, login
 from client import Client, client_menu
 from admin import Admin, admin_menu
 
-
 def main():
     db = connector()
     if db is None:

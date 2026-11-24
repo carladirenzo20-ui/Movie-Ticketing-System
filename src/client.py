@@ -1,12 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
-
 from mysql.connector import Error
-
 
 class BookingError(ValueError):
     """A purchase rejected because its details or available capacity are invalid."""
-
 
 def book_tickets(db, client_id, room_id, screening_date, screening_time,
                  quantity, payment_method_id):
@@ -84,14 +81,12 @@ def book_tickets(db, client_id, room_id, screening_date, screening_time,
         if cursor is not None:
             cursor.close()
 
-
 def display_rows(headers, rows):
     print(" | ".join(headers))
     if not rows:
         print("No results.")
     for row in rows:
         print(" | ".join(str(value) for value in row))
-
 
 class Client:
     def __init__(self, id, connector):
@@ -243,7 +238,6 @@ class Client:
             if cursor is not None:
                 cursor.close()
 
-
 def client_menu(client):
     while True:
         try:
@@ -265,7 +259,6 @@ def client_menu(client):
         else:
             print("Choose a number from 1 to 5.")
 
-
 prev_purch_query = """
 SELECT tot_amount, ticket_sold, payment_type, screening_date, screening_time
 FROM Ticket_Purchase
@@ -286,7 +279,6 @@ add_pay_met_query = """
 INSERT INTO Payment_Method (client_id, payment_type, card_number, billing_address, expiring_date)
 VALUES (%s, %s, %s, %s, %s)
 """
-
 
 def src_mov_screens_query(mov_tit, genre, language, date, time):
     query = """

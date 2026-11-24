@@ -14,7 +14,7 @@ CREATE TABLE Users (
     CHECK (account_role IN ('client', 'admin')),
     CHECK (account_role <> 'client' OR REGEXP_LIKE(address, '[^[:space:]]') IS TRUE)
 ) ENGINE=InnoDB;
-
+ì
 -- 2) Client (ISA from Users)
 CREATE TABLE Client (
     user_id INT PRIMARY KEY,

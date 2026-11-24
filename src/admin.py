@@ -56,6 +56,7 @@ class Admin:
         finally:
             if cursor is not None:
                 cursor.close()
+
     def remain_cap(self):
         cursor = None
         try:
@@ -72,6 +73,7 @@ class Admin:
         finally:
             if cursor is not None:
                 cursor.close()
+
     def view_anal(self):
         cursor = None
         try:
@@ -119,7 +121,7 @@ def admin_menu(admin):
             admin.view_anal()
         if function_menu == 5:
             break
-        
+
 screen_sched_query = """
 SELECT m.title, s.room_id, s.screening_date, s.screening_time,
        s.movie_language, s.tickets_sold
